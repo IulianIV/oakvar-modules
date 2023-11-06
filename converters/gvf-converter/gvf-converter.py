@@ -55,7 +55,6 @@ class Converter(BaseConverter):
 
         var_dicts.append(var_dict)
 
-        print(var_dicts)
 
         return var_dicts
 
