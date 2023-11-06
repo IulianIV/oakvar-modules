@@ -35,16 +35,11 @@ class Converter(BaseConverter):
             'var_no': ''
         }
 
-        parsed_dict = None
-
         if line.startswith('#'):
             return self.IGNORE
 
-        # Handle getting data from `.gvf` files
-        if self.gff_type == 'gvf':
-            parsed_dict = parse_gvf(line)
-        elif self.gff_type in ('gff', 'gf1f3'):
-            parsed_dict = parse_gff(line)
+        # Handle getting data from `.gvf/gff/gff3` files
+        parsed_dict = parse_gvf_gff(line, self.gff_type)
 
         var_dict['chrom'] = parsed_dict['chrom']
         var_dict['pos'] = parsed_dict['pos']
@@ -55,13 +50,13 @@ class Converter(BaseConverter):
 
         var_dicts.append(var_dict)
 
-
         return var_dicts
 
 
-def parse_gff(line) -> dict:
+def parse_gvf_gff(line, file_type: str = ('gvf', 'gff', 'gff3')):
     v_type = ''
-    gff_dict = {
+
+    data_dict = {
         'chrom': '-',
         'pos': '-',
         'ref': '-',
@@ -77,81 +72,56 @@ def parse_gff(line) -> dict:
     if 'chr' not in chrom_val:
         chrom_val = 'chr' + chrom_val
 
-    gff_dict['chrom'] = chrom_val
+    data_dict['chrom'] = chrom_val
 
-    gff_dict['pos'] = line_values[3]
-
-    gff_dict['ref'] = '!'
-
+    data_dict['pos'] = line_values[3]
+    
     value_attrs = [line_val for line_val in line_values[-1].split(';') if line_val != '']
+    if file_type == 'gvf':
+        for val in value_attrs:
+            split_val = val.split('=')
 
-    if 'CNVType' in value_attrs[-1]:
-        v_type = 'CNV'
-    elif 'SVType' in value_attrs[-1]:
-        v_type = 'SV'
+            # sample_id could be ID?
+            if 'ID' in val:
+                data_dict['sample'] = split_val[-1]
 
-    if v_type == 'CNV':
-        copy_num = value_attrs[0].split('=')[-1]
-        gff_dict['alt'] = f'<CNV_{copy_num}>'
-    if v_type == 'SV':
-        gff_dict['alt'] = f'<{line_values[2]}>'
+            if 'Reference_seq' in val:
 
-    return gff_dict
+                data_dict['ref'] = split_val[-1]
+
+                if data_dict['ref'] in ('-', '~'):
+                    data_dict['ref'] = '-'
+
+            # alt_base According to the documentation, the alt value is contained in `Variant_seq`.
+            #   it also contains the ref_base, which seems to be appended at the end
+            if 'Variant_seq' in val:
+                variant_seq_values = split_val[-1]
+
+                if variant_seq_values in ('.', '-', '~'):
+                    alt_base = '-'
+                else:
+                    alt_base = variant_seq_values.split(',')
+
+                # since the ref base can be inside the alt base - remove it
+                # if data_dict['ref'] in alt_base:
+                #     alt_base.remove(data_dict['ref'])
+
+                data_dict['alt'] = ''.join(alt_base)
+
+    elif file_type in ('gff', 'gff3'):
+        data_dict['ref'] = '!'
+
+        if 'CNVType' in value_attrs[-1]:
+            v_type = 'CNV'
+        elif 'SVType' in value_attrs[-1]:
+            v_type = 'SV'
+
+        if v_type == 'CNV':
+            copy_num = value_attrs[0].split('=')[-1]
+            data_dict['alt'] = f'<CNV_{copy_num}>'
+        if v_type == 'SV':
+            data_dict['alt'] = f'<{line_values[2]}>'
+        
+    return data_dict
 
 
-def parse_gvf(line) -> dict:
-    gvf_dict = {
-        'chrom': '-',
-        'pos': '-',
-        'ref': '-',
-        'alt': '-',
-        'sample': '-'
-    }
-    line_values = line.split()
-
-    # chrom is first value
-    chrom_val = line_values[0]
-
-    # in some cases it does not have `chr` appended to it
-    if 'chr' not in chrom_val:
-        chrom_val = 'chr' + chrom_val
-
-    gvf_dict['chrom'] = chrom_val
-
-    # pos is the 4th value
-    gvf_dict['pos'] = line_values[3]
-
-    # get line values
-    value_attrs = [line_val for line_val in line_values[-1].split(';') if line_val != '']
-
-    for val in value_attrs:
-        split_val = val.split('=')
-
-        # sample_id could be ID?
-        if 'ID' in val:
-            gvf_dict['sample'] = split_val[-1]
-
-        if 'Reference_seq' in val:
-
-            gvf_dict['ref'] = split_val[-1]
-
-            if gvf_dict['ref'] in ('-', '~'):
-                gvf_dict['ref'] = '-'
-
-        # alt_base According to the documentation, the alt value is contained in `Variant_seq`.
-        #   it also contains the ref_base, which seems to be appended at the end
-        if 'Variant_seq' in val:
-            variant_seq_values = split_val[-1]
-
-            if variant_seq_values in ('.', '-', '~'):
-                alt_base = '-'
-            else:
-                alt_base = variant_seq_values.split(',')
-
-            # since the ref base can be inside the alt base - remove it
-            # if gvf_dict['ref'] in alt_base:
-            #     alt_base.remove(gvf_dict['ref'])
-
-            gvf_dict['alt'] = ''.join(alt_base)
-
-    return gvf_dict
