@@ -7,8 +7,8 @@ class Converter(BaseConverter):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.gff_type = 'gvf'
         self.format_name = 'gvf'
-        self.gff_type = 'gff'
 
     def check_format(self, f) -> bool:
         from pathlib import Path
@@ -22,6 +22,11 @@ class Converter(BaseConverter):
             return True
         else:
             return False
+
+    def setup(self, *__args__, **__kwargs__):
+        if __args__[0].endswith(('gff', 'gvf', 'gff3')):
+            # reset format_name to the value of the given file
+            self.gff_type = __args__[0].split('.')[-1]
 
     def convert_line(self, line) -> List[Dict]:
         var_dicts = []
@@ -53,7 +58,7 @@ class Converter(BaseConverter):
         return var_dicts
 
 
-def parse_gvf_gff(line, file_type: str = ('gvf', 'gff', 'gff3')):
+def parse_gvf_gff(line, file_type):
     v_type = ''
 
     data_dict = {
@@ -75,12 +80,13 @@ def parse_gvf_gff(line, file_type: str = ('gvf', 'gff', 'gff3')):
     data_dict['chrom'] = chrom_val
 
     data_dict['pos'] = line_values[3]
-    
+
     value_attrs = [line_val for line_val in line_values[-1].split(';') if line_val != '']
+
     if file_type == 'gvf':
+
         for val in value_attrs:
             split_val = val.split('=')
-
             # sample_id could be ID?
             if 'ID' in val:
                 data_dict['sample'] = split_val[-1]
@@ -121,7 +127,5 @@ def parse_gvf_gff(line, file_type: str = ('gvf', 'gff', 'gff3')):
             data_dict['alt'] = f'<CNV_{copy_num}>'
         if v_type == 'SV':
             data_dict['alt'] = f'<{line_values[2]}>'
-        
+
     return data_dict
-
-
